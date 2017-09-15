@@ -1,0 +1,30 @@
+{
+  "name": "baqend-webpack-plugin",
+  "version": "1.0.0",
+  "description": "Webpack plugin for the Baqend Cloud",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Baqend/webpack-plugin.git"
+  },
+  "keywords": [
+    "baqend",
+    "webpack",
+    "plugin",
+    "deployment",
+    "serverless"
+  ],
+  "author": "Konstantin Simon Maria Möllers <ksm@baqend.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Baqend/webpack-plugin/issues"
+  },
+  "homepage": "https://github.com/Baqend/webpack-plugin#readme",
+  "dependencies": {
+    "baqend": "^2.8.5",
+    "chalk": "^2.1.0"
+  }
+}
