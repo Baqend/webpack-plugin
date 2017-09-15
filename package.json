@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/Baqend/webpack-plugin#readme",
   "dependencies": {
+    "anymatch": "^1.3.2",
     "baqend": "^2.8.5",
     "chalk": "^2.1.0"
   }

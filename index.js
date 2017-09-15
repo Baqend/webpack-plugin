@@ -1,4 +1,5 @@
 const db = require('baqend');
+const anymatch = require('anymatch');
 const fs = require('fs');
 const chalk = require('chalk');
 
@@ -13,10 +14,12 @@ class BaqendWebpackPlugin {
     /**
      * @param {string} app The Baqend app to deploy to.
      * @param {string} bucket The remote path on Baqend to deploy files to, "www" by default.
+     * @param {string} filePattern The file directory to deploy files from.
      */
-    constructor({ app, bucket }) {
+    constructor({ app, bucket, filePattern }) {
         this.app = app;
         this.bucket = bucket || 'www';
+        this.filePattern = filePattern;
 
         // Connect to Baqend
         db.connect(app).catch((err) => console.error(err));
@@ -41,6 +44,7 @@ class BaqendWebpackPlugin {
      * @param hash The Webpack compilation hash.
      */
     async executeDeployment({ compilation, hash }) {
+        const [ prefix ] = (this.filePattern && this.filePattern.match(/^([^*{}]*)\//)) || [''];
         const filesToUpload = Object.entries(compilation.assets);
 
         // Ensure we're connected to Baqend
@@ -49,15 +53,25 @@ class BaqendWebpackPlugin {
         console.log(chalk`{rgb(242,115,84) [Baqend]} Uploading {bold ${hash}} to Baqend app {bold ${this.app}}...`);
 
         const firstColWidth = filesToUpload.reduce((last, [assetName]) => Math.max(last, assetName.length), 5);
-        console.log(chalk`{bold ${padLeft('Asset', firstColWidth)}}              {bold Bucket Path}`);
+        const bucketColWidth = Math.max(this.bucket.length, 6);
+        console.log(chalk`{bold ${padLeft('Asset', firstColWidth)}}  {bold ${padLeft('Bucket', bucketColWidth)}}              {bold Path}`);
 
         // Upload each file asynchronously
         await Promise.all(filesToUpload.map(async ([assetName, asset]) => {
-            const { existsAt } = asset;
-            const path = `/${this.bucket}/${assetName}`;
-            await this.uploadFile(path, existsAt);
+            if (this.filePattern && !anymatch(this.filePattern, assetName)) {
+                console.log(chalk`{bold.yellow ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.yellow [skipped]}`);
+                return;
+            }
 
-            console.log(chalk`{bold.green ${padLeft(assetName, firstColWidth)}}  {bold.green [uploaded]}  ${path}`);
+            try {
+                const { existsAt } = asset;
+                const path = `/${this.bucket}/${assetName.replace(prefix, '')}`;
+                await this.uploadFile(path, existsAt);
+
+                console.log(chalk`{bold.green ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.green [uploaded]}  ${path}`);
+            } catch (e) {
+                console.log(chalk`{bold.red ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.red [failed]}`);
+            }
         }));
     }
 
