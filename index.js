@@ -48,9 +48,6 @@ class BaqendWebpackPlugin {
         this.bucket = bucket === false ? bucket : (bucket || 'www');
         this.filePattern = filePattern;
         this.codeDir = codeDir || false;
-
-        // Connect to Baqend
-        this.isConnected = require('baqend/cli/account').login({ app: this.app }).then((db) => this.db = db);
     }
 
     /**
@@ -75,7 +72,7 @@ class BaqendWebpackPlugin {
         const filesToUpload = Object.entries(assets);
 
         // Ensure we're connected to Baqend
-        await this.isConnected;
+        this.db = await require('baqend/cli/account').login({ app: this.app });
 
         console.log(chalk`{rgb(242,115,84) [Baqend]} Uploading {bold ${hash}} to Baqend app {bold ${this.app}}...`);
 
@@ -172,7 +169,7 @@ class BaqendWebpackPlugin {
 
                 console.log(chalk`{bold.green ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.green [uploaded]}  ${path}`);
             } catch (e) {
-                console.log(chalk`{bold.red ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.red [failed]}`);
+                console.log(chalk`{bold.red ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.red [failed]}    {red Error: ${e.reason}}`);
             }
         }));
     }
