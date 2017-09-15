@@ -72,7 +72,11 @@ class BaqendWebpackPlugin {
         const filesToUpload = Object.entries(assets);
 
         // Ensure we're connected to Baqend
-        this.db = await require('baqend/cli/account').login({ app: this.app });
+        if (this.db) {
+            await this.db.ready();
+        } else {
+            this.db = await require('baqend/cli/account').login({ app: this.app });
+        }
 
         console.log(chalk`{rgb(242,115,84) [Baqend]} Uploading {bold ${hash}} to Baqend app {bold ${this.app}}...`);
 
