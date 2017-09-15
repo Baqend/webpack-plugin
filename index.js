@@ -45,9 +45,9 @@ class BaqendWebpackPlugin {
      */
     constructor({ app, bucket, filePattern, codeDir }) {
         this.app = app;
-        this.bucket = bucket || 'www';
+        this.bucket = bucket === false ? bucket : (bucket || 'www');
         this.filePattern = filePattern;
-        this.codeDir = codeDir || 'baqend';
+        this.codeDir = codeDir || false;
 
         // Connect to Baqend
         this.isConnected = require('baqend/cli/account').login({ app: this.app }).then((db) => this.db = db);
@@ -79,31 +79,40 @@ class BaqendWebpackPlugin {
 
         console.log(chalk`{rgb(242,115,84) [Baqend]} Uploading {bold ${hash}} to Baqend app {bold ${this.app}}...`);
 
-        await this.uploadCodeDir();
-        await this.uploadFiles(filesToUpload);
+        if (this.codeDir !== false) {
+            await this.uploadCodeDir();
+        }
+        if (this.bucket !== false) {
+            await this.uploadFiles(filesToUpload);
+        }
     }
 
     async uploadCodeDir() {
-        const files = await readDirectory(this.codeDir);
-        return Promise.all(files.map(async (fileName) => {
-            const stat = await readStat(path.join(this.codeDir, fileName));
-            if (stat.isDirectory()) {
-                try {
-                    await this.uploadHandler(fileName, this.codeDir);
-                } catch (e) {
-                    console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload handlers for {bold ${fileName}}: {red ${e.reason}}`);
-                }
-                return;
-            }
+        try {
+            const files = await readDirectory(this.codeDir);
 
-            const moduleName = fileName.replace(/\.js$/, '');
-            try {
-                await this.uploadCode(moduleName);
-                console.log(chalk`{rgb(242,115,84) [Baqend]} Uploaded module {bold ${moduleName}}`);
-            } catch (e) {
-                console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload module {bold ${moduleName}}: {red ${e.reason}}`);
-            }
-        }));
+            return Promise.all(files.map(async (fileName) => {
+                const stat = await readStat(path.join(this.codeDir, fileName));
+                if (stat.isDirectory()) {
+                    try {
+                        await this.uploadHandler(fileName, this.codeDir);
+                    } catch (e) {
+                        console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload handlers for {bold ${fileName}}: {red ${e.reason}}`);
+                    }
+                    return;
+                }
+
+                const moduleName = fileName.replace(/\.js$/, '');
+                try {
+                    await this.uploadCode(moduleName);
+                    console.log(chalk`{rgb(242,115,84) [Baqend]} Uploaded module {bold ${moduleName}}`);
+                } catch (e) {
+                    console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload module {bold ${moduleName}}: {red ${e.reason}}`);
+                }
+            }));
+        } catch (e) {
+            console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload Baqend code: {red Directory ${this.codeDir} does not exist}`);
+        }
     }
 
     /**
