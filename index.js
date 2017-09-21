@@ -15,15 +15,15 @@ function readDirectory(filePath) {
     return new Promise((resolve, reject) => {
         fs.readdir(filePath, (err, fileNames) => {
             err ? reject(err) : resolve(fileNames);
-        })
-    })
+        });
+    });
 }
 
 function readStat(filePath) {
     return new Promise((resolve, reject) => {
         fs.stat(filePath, (err, stat) => {
             err ? reject(err) : resolve(stat);
-        })
+        });
     });
 }
 
@@ -31,7 +31,7 @@ function readFile(filePath) {
     return new Promise((resolve, reject) => {
         fs.readFile(filePath, 'utf-8', (err, file) => {
             err ? reject(err) : resolve(file);
-        })
+        });
     });
 }
 
@@ -68,52 +68,51 @@ class BaqendWebpackPlugin {
      * @param compilation The Webpack compilation result
      * @param hash The Webpack compilation hash.
      */
-    async executeDeployment({ compilation: { assets }, hash }) {
+    executeDeployment({ compilation: { assets }, hash }) {
         const filesToUpload = Object.entries(assets);
 
         // Ensure we're connected to Baqend
+        let promise;
         if (this.db) {
-            await this.db.ready();
+            promise = this.db.ready();
         } else {
-            this.db = await require('baqend/cli/account').login({ app: this.app });
+            promise = require('baqend/cli/account').login({ app: this.app }).then(db => this.db = db);
         }
 
-        console.log(chalk`{rgb(242,115,84) [Baqend]} Uploading {bold ${hash}} to Baqend app {bold ${this.app}}...`);
+        return promise.then(() => {
+            console.log(chalk`{rgb(242,115,84) [Baqend]} Uploading {bold ${hash}} to Baqend app {bold ${this.app}}...`);
 
-        if (this.codeDir !== false) {
-            await this.uploadCodeDir();
-        }
-        if (this.bucket !== false) {
-            await this.uploadFiles(filesToUpload);
-        }
+            if (this.codeDir !== false) {
+                return this.uploadCodeDir();
+            }
+        }).then(() => {
+            if (this.bucket !== false) {
+                return this.uploadFiles(filesToUpload);
+            }
+        });
     }
 
-    async uploadCodeDir() {
-        try {
-            const files = await readDirectory(this.codeDir);
-
-            return Promise.all(files.map(async (fileName) => {
-                const stat = await readStat(path.join(this.codeDir, fileName));
-                if (stat.isDirectory()) {
-                    try {
-                        await this.uploadHandler(fileName, this.codeDir);
-                    } catch (e) {
-                        console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload handlers for {bold ${fileName}}: {red ${e.reason}}`);
+    uploadCodeDir() {
+        return readDirectory(this.codeDir).then((files) => {
+            return Promise.all(files.map((fileName) => {
+                return readStat(path.join(this.codeDir, fileName)).then((stat) => {
+                    if (stat.isDirectory()) {
+                        return this.uploadHandler(fileName, this.codeDir).catch((e) => {
+                            console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload handlers for {bold ${fileName}}: {red ${e.reason}}`);
+                        });
                     }
-                    return;
-                }
 
-                const moduleName = fileName.replace(/\.js$/, '');
-                try {
-                    await this.uploadCode(moduleName);
-                    console.log(chalk`{rgb(242,115,84) [Baqend]} Uploaded module {bold ${moduleName}}`);
-                } catch (e) {
-                    console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload module {bold ${moduleName}}: {red ${e.reason}}`);
-                }
+                    const moduleName = fileName.replace(/\.js$/, '');
+                    return this.uploadCode(moduleName).then(() => {
+                        console.log(chalk`{rgb(242,115,84) [Baqend]} Uploaded module {bold ${moduleName}}`);
+                    }).catch((e) => {
+                        console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload module {bold ${moduleName}}: {red ${e.reason}}`);
+                    });
+                });
             }));
-        } catch (e) {
+        }).catch(() => {
             console.log(chalk`{rgb(242,115,84) [Baqend]} {red Failed} to upload Baqend code: {red Directory ${this.codeDir} does not exist}`);
-        }
+        });
     }
 
     /**
@@ -121,17 +120,19 @@ class BaqendWebpackPlugin {
      *
      * @param bucket The bucket to upload the handlers of
      */
-    async uploadHandler(bucket) {
+    uploadHandler(bucket) {
         if (!this.db[bucket]) {
-            return;
+            return Promise.resolve();
         }
 
-        const fileNames = await readDirectory(path.join(this.codeDir, bucket));
-        return Promise.all(fileNames.map(async (fileName) => {
-            const handlerType = fileName.replace(/.js$/, '');
-            await this.uploadCode(bucket, handlerType);
-            console.log(chalk`{rgb(242,115,84) [Baqend]} Uploaded {bold ${handlerType}} handler for {bold ${bucket}}`);
-        }));
+        return readDirectory(path.join(this.codeDir, bucket)).then((fileNames) => {
+            return Promise.all(fileNames.map((fileName) => {
+                const handlerType = fileName.replace(/.js$/, '');
+                return this.uploadCode(bucket, handlerType).then(() => {
+                    console.log(chalk`{rgb(242,115,84) [Baqend]} Uploaded {bold ${handlerType}} handler for {bold ${bucket}}`);
+                });
+            }));
+        });
     }
 
     /**
@@ -140,19 +141,20 @@ class BaqendWebpackPlugin {
      * @param bucket The bucket's name
      * @param type The type of code which is uploaded
      */
-    async uploadCode(bucket, type = 'module') {
+    uploadCode(bucket, type = 'module') {
         const filename = type == 'module' ? path.join(this.codeDir, bucket + '.js') : path.join(this.codeDir, bucket, type + '.js');
-        const file = await readFile(filename);
-        if (!codeTypes.includes(type)) {
-            return;
-        }
+        return readFile(filename).then((file) => {
+            if (!codeTypes.includes(type)) {
+                return;
+            }
 
-        return this.db.code.saveCode(bucket, type, file);
+            return this.db.code.saveCode(bucket, type, file);
+        });
     }
 
-    async uploadFiles(filesToUpload) {
+    uploadFiles(filesToUpload) {
         // Get the directory prefix
-        const [ prefix ] = (this.filePattern && this.filePattern.match(/^([^*{}]*)\//)) || [''];
+        const [prefix] = (this.filePattern && this.filePattern.match(/^([^*{}]*)\//)) || [''];
 
         // Display uploaded files
         const firstColWidth = filesToUpload.reduce((last, [assetName]) => Math.max(last, assetName.length), 5);
@@ -160,21 +162,19 @@ class BaqendWebpackPlugin {
         console.log(chalk`{bold ${padLeft('Asset', firstColWidth)}}  {bold ${padLeft('Bucket', bucketColWidth)}}              {bold Path}`);
 
         // Upload each file asynchronously
-        await Promise.all(filesToUpload.map(async ([assetName, asset]) => {
+        return Promise.all(filesToUpload.map(([assetName, asset]) => {
             if (this.filePattern && !anymatch(this.filePattern, assetName)) {
                 console.log(chalk`{bold.yellow ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.yellow [skipped]}`);
                 return;
             }
 
-            try {
-                const { existsAt } = asset;
-                const path = `/${this.bucket}/${assetName.replace(prefix, '')}`;
-                await this.uploadFile(path, existsAt);
-
+            const { existsAt } = asset;
+            const path = `/${this.bucket}/${assetName.replace(prefix, '')}`;
+            return this.uploadFile(path, existsAt).then(() => {
                 console.log(chalk`{bold.green ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.green [uploaded]}  ${path}`);
-            } catch (e) {
+            }).catch((e) => {
                 console.log(chalk`{bold.red ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.red [failed]}    {red Error: ${e.reason}}`);
-            }
+            });
         }));
     }
 
@@ -184,11 +184,12 @@ class BaqendWebpackPlugin {
      * @param path The remote path of the file
      * @param existsAt The local full pathname of the file
      */
-    async uploadFile(path, existsAt) {
-        const stat = await readStat(existsAt);
-        const file = new this.db.File({path, data: fs.createReadStream(existsAt), size: stat.size, type: 'stream'});
+    uploadFile(path, existsAt) {
+        return readStat(existsAt).then((stat) => {
+            const file = new this.db.File({ path, data: fs.createReadStream(existsAt), size: stat.size, type: 'stream' });
 
-        await file.upload({ force: true });
+            return file.upload({ force: true });
+        });
     }
 }
 
