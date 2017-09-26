@@ -69,8 +69,6 @@ class BaqendWebpackPlugin {
      * @param hash The Webpack compilation hash.
      */
     executeDeployment({ compilation: { assets }, hash }) {
-        const filesToUpload = Object.entries(assets);
-
         // Ensure we're connected to Baqend
         let promise;
         if (this.db) {
@@ -87,7 +85,7 @@ class BaqendWebpackPlugin {
             }
         }).then(() => {
             if (this.bucket !== false) {
-                return this.uploadFiles(filesToUpload);
+                return this.uploadFiles(assets);
             }
         });
     }
@@ -152,17 +150,18 @@ class BaqendWebpackPlugin {
         });
     }
 
-    uploadFiles(filesToUpload) {
+    uploadFiles(assets) {
         // Get the directory prefix
         const [prefix] = (this.filePattern && this.filePattern.match(/^([^*{}]*)\//)) || [''];
 
         // Display uploaded files
-        const firstColWidth = filesToUpload.reduce((last, [assetName]) => Math.max(last, assetName.length), 5);
+        const assetNames = Object.keys(assets);
+        const firstColWidth = assetNames.reduce((last, assetName) => Math.max(last, assetName.length), 5);
         const bucketColWidth = Math.max(this.bucket.length, 6);
         console.log(chalk`{bold ${padLeft('Asset', firstColWidth)}}  {bold ${padLeft('Bucket', bucketColWidth)}}              {bold Path}`);
 
         // Upload each file asynchronously
-        return Promise.all(filesToUpload.map(([assetName, asset]) => {
+        return Promise.all(assetNames.map(name => ([name, assets[name]])).map(([assetName, asset]) => {
             if (this.filePattern && !anymatch(this.filePattern, assetName)) {
                 console.log(chalk`{bold.yellow ${padLeft(assetName, firstColWidth)}}  ${padLeft(this.bucket, bucketColWidth)}  {bold.yellow [skipped]}`);
                 return;
